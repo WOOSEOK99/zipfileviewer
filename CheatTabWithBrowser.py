@@ -1,12 +1,20 @@
 import os
+import re
 
 from PyQt6.QtWidgets import (
-    QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QHeaderView, QFileDialog
+    QApplication, QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QTreeWidget, QTreeWidgetItem, QHeaderView, QFileDialog
 )
 from PyQt6.QtCore import Qt
 
 from CheatTab import CheatTab, CheatTextWorker, safe_filename
+
+
+def cleaned_search_title(filename):
+    """웹 검색용으로 확장자와 (태그), [태그]를 제거하되 원래 대소문자는 유지한다."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    title = re.sub(r'\([^)]*\)|\[[^\]]*\]', '', stem)
+    return ' '.join(title.split()).strip()
 
 
 class CheatTabWithBrowser(CheatTab):
@@ -16,6 +24,51 @@ class CheatTabWithBrowser(CheatTab):
         self.manual_selected_entry = None
         super().__init__(parent)
         self._add_manual_browser()
+        self._add_copy_title_button()
+
+    def _add_copy_title_button(self):
+        """오른쪽 '내부 파일' 입력칸 옆에 웹 검색용 제목 복사 버튼을 붙인다."""
+        self.btn_copy_game_title = QPushButton("제목 복사")
+        self.btn_copy_game_title.setEnabled(False)
+        self.btn_copy_game_title.setToolTip(
+            "확장자와 (지역/버전), [태그]를 제거한 게임 제목만 복사합니다."
+        )
+        self.btn_copy_game_title.clicked.connect(self.copy_game_title)
+
+        preview_layout = self.txt_inner.parentWidget().layout()
+        inner_row = self._find_layout_containing_widget(preview_layout, self.txt_inner)
+        if inner_row is not None:
+            inner_row.addWidget(self.btn_copy_game_title)
+
+    def _find_layout_containing_widget(self, layout, target_widget):
+        if layout is None:
+            return None
+
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            if item.widget() is target_widget:
+                return layout
+
+            child_layout = item.layout()
+            if child_layout is not None:
+                found = self._find_layout_containing_widget(
+                    child_layout, target_widget
+                )
+                if found is not None:
+                    return found
+        return None
+
+    def copy_game_title(self):
+        if not self.current_item:
+            return
+
+        title = cleaned_search_title(self.current_item.text(1))
+        if not title:
+            return
+
+        QApplication.clipboard().setText(title)
+        self.btn_copy_game_title.setText("복사됨")
+        self.btn_copy_game_title.setToolTip(f"클립보드: {title}")
 
     def _add_manual_browser(self):
         # 자동 매칭 결과 문구는 한 줄만 차지하도록 고정한다.
@@ -153,6 +206,11 @@ class CheatTabWithBrowser(CheatTab):
         super().archive_item_clicked(item, column)
         self.btn_use_game_name.setEnabled(True)
         self.btn_manual_assign.setEnabled(self.manual_selected_entry is not None)
+        self.btn_copy_game_title.setEnabled(True)
+        self.btn_copy_game_title.setText("제목 복사")
+        self.btn_copy_game_title.setToolTip(
+            "확장자와 (지역/버전), [태그]를 제거한 게임 제목만 복사합니다."
+        )
 
         data = item.data(2, Qt.ItemDataRole.UserRole) or {}
         if not data.get("candidates"):
@@ -166,9 +224,8 @@ class CheatTabWithBrowser(CheatTab):
         if not self.current_item:
             return
 
-        inner_name = self.current_item.text(1)
-        stem = os.path.splitext(os.path.basename(inner_name))[0]
-        self.txt_cheat_search.setText(stem)
+        title = cleaned_search_title(self.current_item.text(1))
+        self.txt_cheat_search.setText(title)
         self.txt_cheat_search.setFocus()
         self.txt_cheat_search.selectAll()
 
@@ -219,6 +276,7 @@ class CheatTabWithBrowser(CheatTab):
         super().archive_item_clicked(self.current_item, 2)
         self.btn_use_game_name.setEnabled(True)
         self.btn_manual_assign.setEnabled(True)
+        self.btn_copy_game_title.setEnabled(True)
         self.lbl_status.setText(
             f"{self.current_system}: '{entry['name']}'을(를) 현재 게임에 수동 지정했습니다."
         )
