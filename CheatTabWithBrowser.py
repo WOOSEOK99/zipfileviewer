@@ -18,6 +18,13 @@ class CheatTabWithBrowser(CheatTab):
         self._add_manual_browser()
 
     def _add_manual_browser(self):
+        # 자동 매칭 결과 문구는 한 줄만 차지하도록 고정한다.
+        self.lbl_status.setWordWrap(False)
+        self.lbl_status.setFixedHeight(24)
+        self.lbl_status.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+
         group = QGroupBox("치트 파일 직접 찾기 (선택한 시스템 폴더)")
         group_layout = QVBoxLayout(group)
 
@@ -44,6 +51,7 @@ class CheatTabWithBrowser(CheatTab):
         self.lbl_manual_count = QLabel(
             "왼쪽에서 시스템 폴더를 선택하면 전체 .cht 목록을 검색할 수 있습니다."
         )
+        self.lbl_manual_count.setFixedHeight(20)
         group_layout.addWidget(self.lbl_manual_count)
 
         self.cheat_list = QTreeWidget()
@@ -53,8 +61,8 @@ class CheatTabWithBrowser(CheatTab):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.cheat_list.itemClicked.connect(self.manual_cheat_clicked)
         self.cheat_list.itemDoubleClicked.connect(self.manual_cheat_double_clicked)
-        self.cheat_list.setMinimumHeight(115)
-        group_layout.addWidget(self.cheat_list)
+        self.cheat_list.setMinimumHeight(220)
+        group_layout.addWidget(self.cheat_list, 1)
 
         button_row = QHBoxLayout()
 
@@ -71,8 +79,9 @@ class CheatTabWithBrowser(CheatTab):
         button_row.addStretch()
         group_layout.addLayout(button_row)
 
-        # 기존 상단 상태 문구와 3열 화면 사이의 남는 공간에 배치한다.
-        group.setMaximumHeight(250)
+        # 상태 문구에서 확보한 공간을 직접 찾기 목록에 사용한다.
+        group.setMinimumHeight(300)
+        group.setMaximumHeight(380)
         self.layout().insertWidget(2, group)
 
     def systems_loaded(self, systems):
