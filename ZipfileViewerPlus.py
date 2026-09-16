@@ -1,6 +1,8 @@
 import sys
 
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QTabWidget
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget
+)
 from PyQt6.QtCore import Qt
 
 from ZipfileViewer import CombinedApp
@@ -71,6 +73,8 @@ class ZipfileViewerPlus(QWidget):
         self.thumbnail_tab = CombinedApp()
         self.cheat_tab = SortedCheatTab()
 
+        self._adjust_cheat_layout()
+
         # 긴 치트 파일명이 잘리지 않도록 후보 선택 칸과 펼침 목록을 넓힌다.
         self.cheat_tab.cmb_candidates.setMinimumWidth(520)
         self.cheat_tab.cmb_candidates.view().setMinimumWidth(800)
@@ -86,6 +90,45 @@ class ZipfileViewerPlus(QWidget):
         tabs.addTab(self.thumbnail_tab, "썸네일")
         tabs.addTab(self.cheat_tab, "치트")
         layout.addWidget(tabs)
+
+    def _adjust_cheat_layout(self):
+        """기능은 그대로 두고 치트 탭의 배치와 폭만 조정한다."""
+        cheat_list = self.cheat_tab.cheat_list
+        system_tree = self.cheat_tab.system_tree
+        archive_tree = self.cheat_tab.archive_tree
+
+        # '하위 경로'는 치트 파일명과 같은 경우가 많아 화면에서는 숨긴다.
+        # 데이터 자체는 남아 있으므로 기존 검색 로직은 그대로 동작한다.
+        cheat_list.setColumnHidden(1, True)
+
+        # 기존 아래쪽 splitter에서 시스템 폴더 목록을 빼서
+        # 위쪽 치트 파일 목록의 왼편으로 이동한다.
+        bottom_splitter = system_tree.parentWidget()
+        browser_group = cheat_list.parentWidget()
+        browser_layout = browser_group.layout()
+
+        cheat_list_index = browser_layout.indexOf(cheat_list)
+        browser_layout.removeWidget(cheat_list)
+
+        system_tree.setParent(browser_group)
+        system_tree.setMinimumWidth(240)
+        system_tree.setMaximumWidth(310)
+
+        browser_row = QHBoxLayout()
+        browser_row.addWidget(system_tree, 0)
+        browser_row.addWidget(cheat_list, 1)
+        browser_layout.insertLayout(cheat_list_index, browser_row, 1)
+
+        # 시스템 폴더가 빠진 만큼 아래쪽 압축파일 목록을 넓힌다.
+        if bottom_splitter is not None:
+            bottom_splitter.setStretchFactor(0, 3)
+            bottom_splitter.setStretchFactor(1, 2)
+            bottom_splitter.setSizes([820, 520])
+
+        archive_tree.setMinimumWidth(760)
+        archive_tree.setColumnWidth(0, 230)
+        archive_tree.setColumnWidth(1, 430)
+        archive_tree.setColumnWidth(2, 150)
 
 
 if __name__ == "__main__":
