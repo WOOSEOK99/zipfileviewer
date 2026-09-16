@@ -3,11 +3,12 @@ import re
 
 from PyQt6.QtWidgets import (
     QApplication, QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTreeWidget, QTreeWidgetItem, QHeaderView, QFileDialog
+    QPushButton, QTreeWidget, QTreeWidgetItem, QHeaderView, QFileDialog,
+    QMessageBox
 )
 from PyQt6.QtCore import Qt
 
-from CheatTab import CheatTab, CheatTextWorker, safe_filename
+from CheatTab import CheatTab, CheatTextWorker, safe_filename, unique_filepath
 
 
 def cleaned_search_title(filename):
@@ -71,7 +72,6 @@ class CheatTabWithBrowser(CheatTab):
         self.btn_copy_game_title.setToolTip(f"클립보드: {title}")
 
     def _add_manual_browser(self):
-        # 자동 매칭 결과 문구는 한 줄만 차지하도록 고정한다.
         self.lbl_status.setWordWrap(False)
         self.lbl_status.setFixedHeight(24)
         self.lbl_status.setAlignment(
@@ -132,7 +132,6 @@ class CheatTabWithBrowser(CheatTab):
         button_row.addStretch()
         group_layout.addLayout(button_row)
 
-        # 상태 문구에서 확보한 공간을 직접 찾기 목록에 사용한다.
         group.setMinimumHeight(300)
         group.setMaximumHeight(380)
         self.layout().insertWidget(2, group)
@@ -157,6 +156,10 @@ class CheatTabWithBrowser(CheatTab):
     def cheats_loaded(self, entries, system_name):
         super().cheats_loaded(entries, system_name)
         self.populate_cheat_list()
+
+    def match_all(self):
+        super().match_all()
+        self._refresh_batch_summary()
 
     def populate_cheat_list(self):
         self.cheat_list.setUpdatesEnabled(False)
@@ -203,7 +206,53 @@ class CheatTabWithBrowser(CheatTab):
             )
 
     def archive_item_clicked(self, item, column):
-        super().archive_item_clicked(item, column)
+        self.current_item = item
+        self.txt_archive.setText(item.text(0))
+        self.txt_inner.setText(item.text(1))
+
+        data = item.data(2, Qt.ItemDataRole.UserRole) or {}
+        candidates = data.get("candidates", [])
+        selected_index = data.get("selected_index")
+
+        self.cmb_candidates.blockSignals(True)
+        self.cmb_candidates.clear()
+
+        if len(candidates) > 1:
+            self.cmb_candidates.addItem("— 다운로드할 치트를 선택하세요 —")
+            for candidate in candidates:
+                self.cmb_candidates.addItem(candidate["name"])
+
+            if isinstance(selected_index, int) and 0 <= selected_index < len(candidates):
+                self.cmb_candidates.setCurrentIndex(selected_index + 1)
+            else:
+                self.cmb_candidates.setCurrentIndex(0)
+        else:
+            for candidate in candidates:
+                self.cmb_candidates.addItem(candidate["name"])
+            if candidates:
+                self.cmb_candidates.setCurrentIndex(0)
+
+        self.cmb_candidates.blockSignals(False)
+        self.cmb_candidates.setEnabled(bool(candidates))
+
+        candidate = self.selected_candidate()
+        self.btn_single.setEnabled(candidate is not None)
+
+        if not candidates:
+            self.txt_preview.setPlainText(
+                "자동으로 매칭된 치트 파일이 없습니다.\n\n"
+                "위의 '치트 파일 직접 찾기'에서 영문 게임명을 검색한 뒤 "
+                "치트 내용을 확인하고 '현재 게임에 지정'을 사용할 수 있습니다."
+            )
+        elif len(candidates) > 1 and candidate is None:
+            self.txt_preview.setPlainText(
+                f"치트 후보가 {len(candidates)}개 있습니다.\n"
+                "위의 '치트 후보' 목록에서 다운로드할 파일을 선택하세요.\n"
+                "선택 내용은 다른 게임을 확인해도 유지되며 일괄 다운로드에 반영됩니다."
+            )
+        else:
+            self.load_preview()
+
         self.btn_use_game_name.setEnabled(True)
         self.btn_manual_assign.setEnabled(self.manual_selected_entry is not None)
         self.btn_copy_game_title.setEnabled(True)
@@ -212,13 +261,147 @@ class CheatTabWithBrowser(CheatTab):
             "확장자와 (지역/버전), [태그]를 제거한 게임 제목만 복사합니다."
         )
 
-        data = item.data(2, Qt.ItemDataRole.UserRole) or {}
-        if not data.get("candidates"):
-            self.txt_preview.setPlainText(
-                "자동으로 매칭된 치트 파일이 없습니다.\n\n"
-                "위의 '치트 파일 직접 찾기'에서 영문 게임명을 검색한 뒤 "
-                "치트 내용을 확인하고 '현재 게임에 지정'을 사용할 수 있습니다."
+    def candidate_changed(self, combo_index):
+        if not self.current_item:
+            return
+
+        data = self.current_item.data(2, Qt.ItemDataRole.UserRole) or {}
+        candidates = data.get("candidates", [])
+
+        if len(candidates) > 1:
+            selected_index = combo_index - 1
+            if 0 <= selected_index < len(candidates):
+                data["selected_index"] = selected_index
+                self.current_item.setData(2, Qt.ItemDataRole.UserRole, data)
+                self.current_item.setText(
+                    2, f"✅ 후보 선택 {selected_index + 1}/{len(candidates)}"
+                )
+                self.btn_single.setEnabled(True)
+                self.load_preview()
+            else:
+                data.pop("selected_index", None)
+                self.current_item.setData(2, Qt.ItemDataRole.UserRole, data)
+                self.current_item.setText(2, f"⚠ 후보 {len(candidates)}개")
+                self.btn_single.setEnabled(False)
+                self.txt_preview.setPlainText(
+                    f"치트 후보가 {len(candidates)}개 있습니다.\n"
+                    "다운로드할 치트를 선택하세요."
+                )
+
+            self._refresh_batch_summary()
+            return
+
+        if len(candidates) == 1:
+            self.btn_single.setEnabled(True)
+            self.load_preview()
+
+    def selected_candidate(self):
+        if not self.current_item:
+            return None
+
+        data = self.current_item.data(2, Qt.ItemDataRole.UserRole) or {}
+        candidates = data.get("candidates", [])
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        if len(candidates) > 1:
+            selected_index = data.get("selected_index")
+            if isinstance(selected_index, int) and 0 <= selected_index < len(candidates):
+                return candidates[selected_index]
+
+        return None
+
+    def _refresh_batch_summary(self):
+        if not self.cheat_entries:
+            return
+
+        root = self.archive_tree.invisibleRootItem()
+        matched_count = 0
+        downloadable_count = 0
+        unresolved_count = 0
+
+        for i in range(root.childCount()):
+            item = root.child(i)
+            data = item.data(2, Qt.ItemDataRole.UserRole) or {}
+            candidates = data.get("candidates", [])
+
+            if not candidates:
+                continue
+
+            matched_count += 1
+            if len(candidates) == 1:
+                downloadable_count += 1
+                continue
+
+            selected_index = data.get("selected_index")
+            if isinstance(selected_index, int) and 0 <= selected_index < len(candidates):
+                downloadable_count += 1
+            else:
+                unresolved_count += 1
+
+        self.btn_batch.setEnabled(downloadable_count > 0)
+
+        extra = (
+            f" 후보 미선택 {unresolved_count}개는 일괄 다운로드에서 제외됩니다."
+            if unresolved_count else ""
+        )
+        self.lbl_status.setText(
+            f"{self.current_system}: 게임 {matched_count}개에 치트 후보가 있습니다. "
+            f"현재 일괄 다운로드 대상 {downloadable_count}개입니다."
+            f"{extra}"
+        )
+
+    def batch_download(self):
+        save_dir = QFileDialog.getExistingDirectory(
+            self, "일괄 치트 다운로드 폴더 선택"
+        )
+        if not save_dir:
+            return
+
+        root = self.archive_tree.invisibleRootItem()
+        download_list = []
+        skipped = 0
+        used = set()
+
+        for i in range(root.childCount()):
+            item = root.child(i)
+            data = item.data(2, Qt.ItemDataRole.UserRole) or {}
+            candidates = data.get("candidates", [])
+            candidate = None
+
+            if len(candidates) == 1:
+                candidate = candidates[0]
+            elif len(candidates) > 1:
+                selected_index = data.get("selected_index")
+                if isinstance(selected_index, int) and 0 <= selected_index < len(candidates):
+                    candidate = candidates[selected_index]
+                else:
+                    skipped += 1
+                    continue
+
+            if candidate is None:
+                continue
+
+            inner_name = item.text(1)
+            filename = f"{safe_filename(os.path.splitext(inner_name)[0])}.cht"
+            filepath = unique_filepath(save_dir, filename, used)
+            download_list.append((candidate["url"], filepath))
+
+        if not download_list:
+            QMessageBox.information(
+                self,
+                "알림",
+                "일괄 다운로드할 치트가 없습니다.\n"
+                "후보가 여러 개인 항목은 먼저 다운로드할 후보를 선택하세요.",
             )
+            return
+
+        self.download_note = (
+            f"\n후보를 선택하지 않은 게임 {skipped}개는 건너뛰었습니다."
+            if skipped else ""
+        )
+        self.start_download(download_list)
 
     def use_current_game_name_for_search(self):
         if not self.current_item:
@@ -270,13 +453,12 @@ class CheatTabWithBrowser(CheatTab):
             {"candidates": [entry], "match_type": "manual"},
         )
         self.current_item.setText(2, "🛠 수동 지정")
-        self.btn_batch.setEnabled(True)
 
-        # 기존 후보 선택/개별 다운로드 UI도 수동 지정된 파일을 가리키도록 갱신한다.
-        super().archive_item_clicked(self.current_item, 2)
+        self.archive_item_clicked(self.current_item, 2)
         self.btn_use_game_name.setEnabled(True)
         self.btn_manual_assign.setEnabled(True)
         self.btn_copy_game_title.setEnabled(True)
+        self._refresh_batch_summary()
         self.lbl_status.setText(
             f"{self.current_system}: '{entry['name']}'을(를) 현재 게임에 수동 지정했습니다."
         )
