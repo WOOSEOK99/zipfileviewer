@@ -8,6 +8,7 @@ from PIL import Image, ImageTk
 
 
 from mixins.ui_setup import UiSetupMixin
+from mixins.game_add_cheat_ops import GameAddCheatMixin
 from mixins.data_ops import DataOpsMixin
 from mixins.list_ops import ListOpsMixin
 from mixins.cheat_ops import CheatOpsMixin
@@ -16,7 +17,7 @@ from mixins.search_dialog import SearchDialogMixin
 from mixins.misc_ops import MiscOpsMixin
 
 class GameJsonEditor(
-    UiSetupMixin, DataOpsMixin, ListOpsMixin, CheatOpsMixin, CommandOpsMixin, SearchDialogMixin, MiscOpsMixin
+    UiSetupMixin, GameAddCheatMixin, DataOpsMixin, ListOpsMixin, CheatOpsMixin, CommandOpsMixin, SearchDialogMixin, MiscOpsMixin
 ):
     def __init__(self, root):
         self.root = root
