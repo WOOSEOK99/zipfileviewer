@@ -18,6 +18,10 @@ class ZipfileViewerPlus(QWidget):
         self.thumbnail_tab = CombinedApp()
         self.cheat_tab = CheatTabWithBrowser()
 
+        # 긴 치트 파일명이 잘리지 않도록 후보 선택 칸과 펼침 목록을 넓힌다.
+        self.cheat_tab.cmb_candidates.setMinimumWidth(520)
+        self.cheat_tab.cmb_candidates.view().setMinimumWidth(800)
+
         tabs.addTab(self.thumbnail_tab, "썸네일")
         tabs.addTab(self.cheat_tab, "치트")
         layout.addWidget(tabs)
