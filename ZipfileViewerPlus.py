@@ -7,36 +7,15 @@ from ZipfileViewer import CombinedApp
 from CheatTabWithBrowser import CheatTabWithBrowser
 
 
-class ZipfileViewerPlus(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("압축파일 썸네일 & 치트 매칭 매니저")
-        self.resize(1380, 900)
+class SortedCheatTab(CheatTabWithBrowser):
+    """치트 매칭이 끝나면 결과 상태별로 자동 정렬한다."""
 
-        layout = QVBoxLayout(self)
-        tabs = QTabWidget()
+    def match_all(self):
+        super().match_all()
+        self.sort_match_results()
 
-        self.thumbnail_tab = CombinedApp()
-        self.cheat_tab = CheatTabWithBrowser()
-
-        # 긴 치트 파일명이 잘리지 않도록 후보 선택 칸과 펼침 목록을 넓힌다.
-        self.cheat_tab.cmb_candidates.setMinimumWidth(520)
-        self.cheat_tab.cmb_candidates.view().setMinimumWidth(800)
-
-        # '치트 매칭' 헤더 클릭 시 사용자 지정 우선순위로 정렬한다.
-        self.cheat_tab.archive_tree.header().sectionClicked.connect(
-            self._sort_cheat_rows_by_match_status
-        )
-
-        tabs.addTab(self.thumbnail_tab, "썸네일")
-        tabs.addTab(self.cheat_tab, "치트")
-        layout.addWidget(tabs)
-
-    def _sort_cheat_rows_by_match_status(self, section):
-        if section != 2:
-            return
-
-        tree = self.cheat_tab.archive_tree
+    def sort_match_results(self):
+        tree = self.archive_tree
         current_item = tree.currentItem()
         rows = []
         original_index = 0
@@ -48,25 +27,25 @@ class ZipfileViewerPlus(QWidget):
             selected_index = data.get("selected_index")
 
             if not candidates:
-                # 매칭 안 됨
+                # 3순위: 매칭 안 됨
                 priority = 2
             elif len(candidates) == 1:
-                # 정확히 일치 / 이름 매칭 / 수동 지정
+                # 1순위: 정확히 일치 / 이름 매칭 / 수동 지정
                 priority = 0
             elif (
                 isinstance(selected_index, int)
                 and 0 <= selected_index < len(candidates)
             ):
-                # 여러 후보 중 사용자가 이미 선택 완료
+                # 1순위: 여러 후보 중 사용자가 이미 선택 완료
                 priority = 0
             else:
-                # 후보는 있으나 아직 선택 필요
+                # 2순위: 후보는 있으나 아직 선택 필요
                 priority = 1
 
             rows.append((priority, original_index, item))
             original_index += 1
 
-        # 같은 그룹 안에서는 기존 순서를 유지한다.
+        # 같은 상태 그룹 안에서는 원래 순서를 유지한다.
         rows.sort(key=lambda row: (row[0], row[1]))
 
         for _, _, item in rows:
@@ -78,6 +57,35 @@ class ZipfileViewerPlus(QWidget):
         header = tree.header()
         header.setSortIndicatorShown(True)
         header.setSortIndicator(2, Qt.SortOrder.AscendingOrder)
+
+
+class ZipfileViewerPlus(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("압축파일 썸네일 & 치트 매칭 매니저")
+        self.resize(1380, 900)
+
+        layout = QVBoxLayout(self)
+        tabs = QTabWidget()
+
+        self.thumbnail_tab = CombinedApp()
+        self.cheat_tab = SortedCheatTab()
+
+        # 긴 치트 파일명이 잘리지 않도록 후보 선택 칸과 펼침 목록을 넓힌다.
+        self.cheat_tab.cmb_candidates.setMinimumWidth(520)
+        self.cheat_tab.cmb_candidates.view().setMinimumWidth(800)
+
+        # 필요하면 '치트 매칭' 헤더를 눌러 같은 정렬을 다시 적용할 수 있다.
+        self.cheat_tab.archive_tree.header().sectionClicked.connect(
+            lambda section: (
+                self.cheat_tab.sort_match_results()
+                if section == 2 else None
+            )
+        )
+
+        tabs.addTab(self.thumbnail_tab, "썸네일")
+        tabs.addTab(self.cheat_tab, "치트")
+        layout.addWidget(tabs)
 
 
 if __name__ == "__main__":
