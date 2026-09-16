@@ -1,0 +1,48 @@
+📋 게임 설명(desc) 텍스트 정규화 규칙
+1. 줄바꿈
+JSON 문자열 내에서 줄바꿈은 반드시 \n (이스케이프 문자열)으로 표기한다.
+
+json
+"desc": "첫 번째 줄\n두 번째 줄"
+2. 소제목 (Header)
+대괄호 [ ]로 감싸서 소제목임을 표시한다. 이전 내용과의 구분을 위해 앞에 \n을 추가한다.
+
+[기술명: 스피닝 파일 드라이버]
+[General Info]
+한글 소제목 → Primary 컬러 배경 바로 표시됨
+영문 소제목 → Secondary 컬러 배경 바 + 위쪽 추가 여백으로 표시됨 (한/영 섹션 구분)
+3. 키: 값 라벨링 (Key-Value)
+속성과 값은 반드시 키: 값 형태로 콜론(:)으로 구분한다. 키는 25자 이내로 작성한다.
+
+사용 캐릭터: 장비
+커맨드: [잡기] → [레버이동]
+개발사: 캡콤
+UI에서 키는 Primary 컬러 Bold, 값은 일반 텍스트로 2컬럼 정렬됨
+
+4. 리스트 (파이프 구분)
+여러 항목을 나열할 때는 파이프 기호 |로 구분한다.
+
+4-1. 키가 있는 리스트
+탈것 순서: Tank | Golden Tank | Camel
+4-2. 키가 없는 독립 리스트
+Tank | Golden Tank | Camel
+UI에서 자동으로 번호 배지 리스트로 변환됨
+① Tank  ② Golden Tank  ③ Camel
+
+5. 한/영 섹션 구분
+한국어 설명과 영문 설명이 함께 있을 경우 영문 소제목 앞에 \n을 추가해 확실히 구분한다.
+
+[게임 소개]
+1994년 캡콤이 개발한 벨트스크롤 액션게임.
+[General Info]
+A belt-scroll action game developed by Capcom in 1994.
+✅ 전체 예시
+json
+"desc": "[게임 소개]\n1994년 캡콤이 개발한 벨트스크롤 액션게임.\n\n[기술: 스피닝 파일 드라이버]\n사용 캐릭터: 장비\n커맨드: [잡기] → [레버이동]\n탈것: Tank | Golden Tank | Camel\n\n[General Info]\nA belt-scroll action game by Capcom.\n[Characters]\nName: Zhang Fei\nSpecial: Grab then lever input"
+
+🚫 주의사항
+잘못된 예	올바른 예
+키 길이 26자 이상 → 일반 텍스트로 처리됨	키는 25자 이내
+키 - 값 (하이픈 구분)	키: 값 (콜론 구분)
+실제 개행문자	\n 이스케이프 문자열
+[소제목 (닫는 ] 누락)	[소제목]
