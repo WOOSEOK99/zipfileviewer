@@ -8,6 +8,7 @@ from PIL import Image, ImageTk
 
 
 from mixins.ui_setup import UiSetupMixin
+from mixins.bulk_console_ops import BulkConsoleMixin
 from mixins.game_add_cheat_ops import GameAddCheatMixin
 from mixins.data_ops import DataOpsMixin
 from mixins.list_ops import ListOpsMixin
@@ -17,7 +18,7 @@ from mixins.search_dialog import SearchDialogMixin
 from mixins.misc_ops import MiscOpsMixin
 
 class GameJsonEditor(
-    UiSetupMixin, GameAddCheatMixin, DataOpsMixin, ListOpsMixin, CheatOpsMixin, CommandOpsMixin, SearchDialogMixin, MiscOpsMixin
+    BulkConsoleMixin, UiSetupMixin, GameAddCheatMixin, DataOpsMixin, ListOpsMixin, CheatOpsMixin, CommandOpsMixin, SearchDialogMixin, MiscOpsMixin
 ):
     def __init__(self, root):
         self.root = root
@@ -30,7 +31,7 @@ class GameJsonEditor(
         self.marquee_base = "https://wooseok99.github.io/my-mrq/marquee/"
         
         # 자동 완성을 위한 사전 정의 데이터
-        self.default_genres = ["슈팅", "액션", "벨트스크롤 액션", "격투", "퍼즐", "스포츠", "레이싱"]
+        self.default_genres = ["RPG", "격투", "레이싱", "슈팅", "스포츠", "시뮬레이션", "액션", "퀴즈", "퍼즐/캐주얼"]
         self.default_devs = ["캡콤", "나즈카", "SNK", "세가", "타이토", "코나미", "데이터 이스트"]
         self.genre_list = list(self.default_genres)
         self.genre_en_list = []
