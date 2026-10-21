@@ -208,7 +208,8 @@ class BulkConsoleMixin:
                 warnings.append("스냅샷 없음")
             if not row["cheat"]:
                 warnings.append("치트 없음")
-            if row["genre_reason"] and not row["genre"]:
+            warnings.extend(row.get("notes", []))
+            if row["genre_reason"] and (not row["genre"] or "확인 권장" in row["genre_reason"]):
                 warnings.append(row["genre_reason"])
             return ", ".join(bad + warnings) or "등록 가능"
 
@@ -256,16 +257,18 @@ class BulkConsoleMixin:
                         if region:
                             key = (raw_key[:40] + "_" + region)[:55]
                     keys.add(key)
-                    genre, reason, source = lookup_genre(english, system) if english and not zip_issue else (
-                        "", "영문 제목 또는 ZIP 상태를 먼저 확인하세요.", ""
+                    genre, reason, source = lookup_genre(english, system) if english else (
+                        "", "ZIP에서 영문 제목을 추출하지 못했습니다.", ""
                     )
-                    problems = [x for x in (zip_issue, snap_issue, cheat_issue) if x]
+                    # 여러 ROM이 든 ZIP은 최대 파일의 제목을 후보로 표시하고 수동 확인한다.
+                    notes = [zip_issue] if zip_issue.startswith("ZIP에 ROM 파일이 여러 개") else []
+                    problems = [x for x in (zip_issue, snap_issue, cheat_issue) if x and x not in notes]
                     row = {
                         "rom": path, "system": system, "key": key, "title": title,
                         "english": english, "genre": genre, "genre_reason": reason,
                         "source": source, "snapshot": snapshot, "cheat": cheat,
-                        "problems": problems, "selected": bool(
-                            key and title and english and genre and not problems
+                        "problems": problems, "notes": notes, "selected": bool(
+                            key and title and english and genre and not problems and not notes
                             and key not in existing
                         ),
                     }
