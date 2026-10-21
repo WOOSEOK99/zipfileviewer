@@ -188,8 +188,8 @@ class BulkConsoleMixin:
 
         def errors(row):
             problems = list(row["problems"])
-            if not row["key"]:
-                problems.append("Key 없음")
+            if not re.fullmatch(r"[a-z0-9]{15}", row["key"]):
+                problems.append("Key는 영문 소문자·숫자 15자리여야 합니다.")
             if not row["title"]:
                 problems.append("한글 제목 확인 필요")
             if not row["english"]:
@@ -249,14 +249,25 @@ class BulkConsoleMixin:
                     aliases = (file_stem, title, english)
                     snapshot, snap_issue = _find_asset(snaps, aliases)
                     cheat, cheat_issue = _find_asset(cheats, aliases)
-                    raw_key = _slug(english)
-                    key = raw_key
-                    if key in keys and raw_key:
-                        # 지역판 구별: 기존 Key는 덮어쓰지 않고 충돌을 미리 보여준다.
-                        regions = re.findall(r"\(([^)]*)\)", file_stem)
-                        region = _slug("_".join(regions))[:14]
-                        if region:
-                            key = (raw_key[:40] + "_" + region)[:55]
+                    # JSON Key = ROM .bin 이름 = 스냅샷 이름 = 치트 이름
+                    # 기존 데이터와 로컬 파일에 없는 무작위 15자리 값을 미리 결정한다.
+                    for _ in range(100):
+                        key = "".join(random.choices(string.ascii_lowercase + string.digits, k=15))
+                        rom_target = os.path.join(self.base_dir, "konfiles", system, key + ".bin")
+                        snapshot_target = (
+                            os.path.join(os.path.dirname(snapshot),
+                                         key + os.path.splitext(snapshot)[1].lower())
+                            if snapshot else None
+                        )
+                        cheat_target = os.path.join(
+                            self.base_dir, "support", CHEAT_DIRS[system], key + ".cht"
+                        )
+                        if (key not in keys and not os.path.exists(rom_target)
+                                and not os.path.exists(cheat_target)
+                                and (not snapshot_target or not os.path.exists(snapshot_target))):
+                            break
+                    else:
+                        raise RuntimeError("중복되지 않는 15자리 Key를 생성하지 못했습니다.")
                     keys.add(key)
                     genre, libretro_title, reason, source = lookup_libretro(
                         english, system, rom_crc,
@@ -427,21 +438,16 @@ class BulkConsoleMixin:
                     continue
                 created = []
                 try:
-                    # 기존 콘솔 ZIP 등록과 동일하게 ZIP 원본을 .bin 이름으로 복사
-                    for attempt in range(15):
-                        basename = "".join(random.choices(string.ascii_lowercase + string.digits, k=15))
-                        rom_dest = os.path.join(rom_dir, basename + ".bin")
-                        snap_dest = (
-                            os.path.join(os.path.dirname(row["snapshot"]),
-                                         basename + os.path.splitext(row["snapshot"])[1].lower())
-                            if row["snapshot"] else None
-                        )
-                        if not os.path.exists(rom_dest) and (
-                            not snap_dest or not os.path.exists(snap_dest)
-                        ):
-                            break
-                    else:
-                        raise FileExistsError("파일명 충돌이 반복되었습니다.")
+                    # 미리보기에서 정한 Key를 그대로 .bin 및 스냅샷 파일명에 사용
+                    basename = key
+                    rom_dest = os.path.join(rom_dir, basename + ".bin")
+                    snap_dest = (
+                        os.path.join(os.path.dirname(row["snapshot"]),
+                                     basename + os.path.splitext(row["snapshot"])[1].lower())
+                        if row["snapshot"] else None
+                    )
+                    if os.path.exists(rom_dest) or (snap_dest and os.path.exists(snap_dest)):
+                        raise FileExistsError("같은 Key의 ROM 또는 스냅샷 파일이 이미 존재합니다.")
                     _copy_exclusive(row["rom"], rom_dest)
                     created.append(rom_dest)
                     if snap_dest:
