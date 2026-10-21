@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
 
 from mixins.genre_lookup import GENRES, GENRE_EN, lookup_genre
+from mixins.libretro_genre import lookup_libretro
 
 CONSOLES = ("snes", "nes", "genesis", "gba")
 ROM_EXTENSIONS = {
@@ -88,7 +89,7 @@ def _english_from_zip(path, system):
             return "", "ZIP 내부에 해당 기종의 ROM이 없습니다."
         chosen = max(candidates, key=lambda item: item.file_size)
         stem = posixpath.splitext(posixpath.basename(chosen.filename))[0]
-        return _without_regions(stem), ("ZIP에 ROM 파일이 여러 개 있습니다." if len(candidates) > 1 else "")
+        return _without_regions(stem), ("ZIP에 ROM 파일이 여러 개 있습니다." if len(candidates) > 1 else ""), chosen.CRC
 
 
 def _copy_exclusive(source, target):
@@ -238,9 +239,9 @@ class BulkConsoleMixin:
                     if cancelled.is_set():
                         break
                     file_stem = os.path.splitext(os.path.basename(path))[0]
-                    english, zip_issue = "", ""
+                    english, zip_issue, rom_crc = "", "", None
                     try:
-                        english, zip_issue = _english_from_zip(path, system)
+                        english, zip_issue, rom_crc = _english_from_zip(path, system)
                     except (OSError, ValueError, zipfile.BadZipFile, RuntimeError) as exc:
                         zip_issue = "ZIP 읽기 실패: " + str(exc)[:80]
                     english = english.strip()
@@ -257,9 +258,20 @@ class BulkConsoleMixin:
                         if region:
                             key = (raw_key[:40] + "_" + region)[:55]
                     keys.add(key)
-                    genre, reason, source = lookup_genre(english, system) if english else (
-                        "", "ZIP에서 영문 제목을 추출하지 못했습니다.", ""
+                    genre, libretro_title, reason, source = lookup_libretro(
+                        english, system, rom_crc,
+                        os.path.join(self.base_dir, "support", "libretro_genre_cache"),
                     )
+                    if not genre and english:
+                        web_genre, web_reason, web_source = lookup_genre(english, system)
+                        if web_genre:
+                            genre, reason, source = web_genre, web_reason, web_source
+                        else:
+                            reason = reason + " / " + web_reason
+                    if not genre and not english:
+                        reason = "ZIP에서 영문 제목을 추출하지 못했습니다. " + reason
+                    if not english and libretro_title:
+                        english = libretro_title
                     # 여러 ROM이 든 ZIP은 최대 파일의 제목을 후보로 표시하고 수동 확인한다.
                     notes = [zip_issue] if zip_issue.startswith("ZIP에 ROM 파일이 여러 개") else []
                     problems = [x for x in (zip_issue, snap_issue, cheat_issue) if x and x not in notes]
