@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
 
 from mixins.genre_lookup import GENRES, GENRE_EN, lookup_genre, lookup_korean_game
+from mixins.extra_genre_lookup import lookup_extra_genre
 from mixins.libretro_genre import lookup_libretro
 
 CONSOLES = ("snes", "nes", "genesis", "gba")
@@ -311,6 +312,12 @@ class BulkConsoleMixin:
                             genre, reason, source = web_genre, web_reason, web_source
                         else:
                             reason = reason + " / " + web_reason
+                    if not genre and english and not _unusable_english(english):
+                        extra_genre, extra_reason, extra_source = lookup_extra_genre(english, system)
+                        if extra_genre:
+                            genre, reason, source = extra_genre, extra_reason, extra_source
+                        else:
+                            reason = reason + " / " + extra_reason
                     if _unusable_english(english):
                         english = ""
                         reason = "영문 제목 자동 확인 실패 (수동 입력 필요). " + reason
