@@ -237,3 +237,102 @@ def lookup_genre(title, system):
 
     note = " / ".join(explanations[:2])
     return "", ("장르 근거를 확인할 수 없습니다. " + note).strip(), ""
+
+
+def _korean_title_key(name):
+    """Compare Korean labels and aliases without whitespace/punctuation differences."""
+    return "".join(
+        char for char in unicodedata.normalize("NFKC", name).casefold()
+        if char.isalnum()
+    )
+
+
+@lru_cache(maxsize=512)
+def lookup_korean_game(title, system):
+    """Return (English title, genre, reason, URL) only for a verified console game."""
+    title = title.strip()
+    system = system.strip().lower()
+    if not re.search(r"[가-힣]", title) or system not in PLATFORM_NAMES:
+        return "", "", "조회할 한글 제목 또는 지원 기종이 없습니다.", ""
+    try:
+        search = _request(
+            "www.wikidata.org", action="wbsearchentities",
+            search=title, language="ko", type="item", limit=12,
+        )
+        ids = list(dict.fromkeys(
+            item.get("id", "") for item in search.get("search", [])
+            if re.fullmatch(r"Q\d+", item.get("id", ""))
+        ))
+        if not ids:
+            return "", "", "Wikidata에서 한글 제목을 찾지 못했습니다.", ""
+        entities = _request(
+            "www.wikidata.org", action="wbgetentities",
+            ids="|".join(ids), props="labels|aliases|claims|sitelinks",
+            sitefilter="enwiki", languages="ko|en",
+        ).get("entities", {})
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return "", "", "Wikidata 한글 제목 조회 실패: " + str(exc)[:70], ""
+
+    matches = []
+    key = _korean_title_key(title)
+    for qid in ids:
+        item = entities.get(qid, {})
+        names = [item.get("labels", {}).get("ko", {}).get("value", "")]
+        names.extend(
+            alias.get("value", "")
+            for alias in item.get("aliases", {}).get("ko", [])
+        )
+        if not any(_korean_title_key(name) == key for name in names if name):
+            continue
+        wiki_title = item.get("sitelinks", {}).get("enwiki", {}).get("title", "")
+        english = item.get("labels", {}).get("en", {}).get("value", "")
+        english = english or _clean_wiki_title(wiki_title)
+        if not re.search(r"[A-Za-z]", english) or re.search(r"[가-힣]", english):
+            continue
+
+        claims = item.get("claims", {})
+        platform_ids = _entity_ids(claims, "P400")
+        genre_ids = _entity_ids(claims, "P136")
+        try:
+            labels = _labels(tuple(sorted(set(platform_ids + genre_ids))))
+        except (OSError, ValueError, TypeError, KeyError):
+            labels = {}
+        platform_match = any(
+            _platform_matches(labels.get(pid, ""), system) for pid in platform_ids
+        )
+        info = None
+        if platform_ids and not platform_match:
+            continue
+        if not platform_ids:
+            if not wiki_title:
+                continue
+            try:
+                info = _wikipedia_infobox(wiki_title)
+            except (OSError, ValueError, TypeError, KeyError):
+                continue
+            if not info or not _platform_matches(info.get("platform", ""), system):
+                continue
+
+        genre = _classify([labels.get(gid, "") for gid in genre_ids])
+        if not genre and wiki_title:
+            if info is None:
+                try:
+                    info = _wikipedia_infobox(wiki_title)
+                except (OSError, ValueError, TypeError, KeyError):
+                    info = None
+            if info:
+                genre = _classify([info.get("genre", "")])
+        matches.append((english, genre, "https://www.wikidata.org/wiki/" + qid))
+
+    if not matches:
+        return "", "", "한글 제목과 기종이 일치하는 게임을 찾지 못했습니다.", ""
+    if len({_normalized(name) for name, _, _ in matches}) != 1:
+        return "", "", "같은 한글 제목의 서로 다른 게임이 검색되었습니다.", ""
+    genres = {genre for _, genre, _ in matches if genre}
+    if len(genres) > 1:
+        return "", "", "한글 제목 검색 결과의 장르가 충돌합니다.", ""
+    english, _, url = matches[0]
+    genre = next(iter(genres), "")
+    reason = ("Wikidata 한글 제목·기종 확인" if genre
+              else "Wikidata 한글 제목·기종 확인, 장르 확인 필요")
+    return english, genre, reason, url
