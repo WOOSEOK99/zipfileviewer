@@ -13,7 +13,7 @@ import zipfile
 from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
 
-from mixins.genre_lookup import GENRES, GENRE_EN, lookup_genre
+from mixins.genre_lookup import GENRES, GENRE_EN, lookup_genre, lookup_korean_game
 from mixins.libretro_genre import lookup_libretro
 
 CONSOLES = ("snes", "nes", "genesis", "gba")
@@ -77,6 +77,22 @@ def _find_asset(files, aliases):
     return None, ""
 
 
+def _decode_zip_name(item):
+    """Restore CP949 ZIP entry names when ZIP's UTF-8 flag is not set."""
+    name = item.filename
+    if item.flag_bits & 0x800:
+        return name
+    try:
+        restored = name.encode("cp437").decode("cp949")
+    except (UnicodeError, LookupError):
+        return name
+    return restored if re.search(r"[가-힣]", restored) else name
+
+
+def _unusable_english(name):
+    return bool(re.search(r"[가-힣]|[^\x20-\x7e]", name)) or not bool(re.search(r"[A-Za-z]", name))
+
+
 def _english_from_zip(path, system):
     with zipfile.ZipFile(path) as archive:
         candidates = [
@@ -88,7 +104,7 @@ def _english_from_zip(path, system):
         if not candidates:
             return "", f"ZIP 내부에 {system.upper()}용 ROM 파일이 없습니다. 기종 선택을 확인하세요.", None
         chosen = max(candidates, key=lambda item: item.file_size)
-        stem = posixpath.splitext(posixpath.basename(chosen.filename))[0]
+        stem = posixpath.splitext(posixpath.basename(_decode_zip_name(chosen)))[0]
         return _without_regions(stem), ("ZIP에 ROM 파일이 여러 개 있습니다." if len(candidates) > 1 else ""), chosen.CRC
 
 
@@ -273,16 +289,31 @@ class BulkConsoleMixin:
                         english, system, rom_crc,
                         os.path.join(self.base_dir, "support", "libretro_genre_cache"),
                     )
-                    if not genre and english:
+                    # CRC32가 일치했다면 깨진 ZIP 파일명보다 DB의 공식 영문명을 우선한다.
+                    if libretro_title and (not english or _unusable_english(english)):
+                        english = libretro_title
+                    if _unusable_english(english):
+                        # ZIP 내부 또는 ZIP 파일 자체의 한글 제목으로 영문 별칭을 찾는다.
+                        for korean_title in dict.fromkeys((english, title)):
+                            if not re.search(r"[가-힣]", korean_title):
+                                continue
+                            translated, matched_genre, matched_reason, matched_source = lookup_korean_game(
+                                korean_title, system
+                            )
+                            if translated:
+                                english = translated
+                                if not genre and matched_genre:
+                                    genre, reason, source = matched_genre, matched_reason, matched_source
+                                break
+                    if not genre and english and not _unusable_english(english):
                         web_genre, web_reason, web_source = lookup_genre(english, system)
                         if web_genre:
                             genre, reason, source = web_genre, web_reason, web_source
                         else:
                             reason = reason + " / " + web_reason
-                    if not genre and not english:
-                        reason = "ZIP에서 영문 제목을 추출하지 못했습니다. " + reason
-                    if not english and libretro_title:
-                        english = libretro_title
+                    if _unusable_english(english):
+                        english = ""
+                        reason = "영문 제목 자동 확인 실패 (수동 입력 필요). " + reason
                     # 여러 ROM이 든 ZIP은 최대 파일의 제목을 후보로 표시하고 수동 확인한다.
                     notes = [zip_issue] if zip_issue.startswith("ZIP에 ROM 파일이 여러 개") else []
                     problems = [x for x in (zip_issue, snap_issue, cheat_issue) if x and x not in notes]
