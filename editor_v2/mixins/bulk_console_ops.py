@@ -86,7 +86,7 @@ def _english_from_zip(path, system):
             and posixpath.splitext(item.filename)[1].casefold() in ROM_EXTENSIONS[system]
         ]
         if not candidates:
-            return "", "ZIP 내부에 해당 기종의 ROM이 없습니다."
+            return "", f"ZIP 내부에 {system.upper()}용 ROM 파일이 없습니다. 기종 선택을 확인하세요.", None
         chosen = max(candidates, key=lambda item: item.file_size)
         stem = posixpath.splitext(posixpath.basename(chosen.filename))[0]
         return _without_regions(stem), ("ZIP에 ROM 파일이 여러 개 있습니다." if len(candidates) > 1 else ""), chosen.CRC
